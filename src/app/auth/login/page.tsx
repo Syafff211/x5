@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/store';
 
 const loginSchema = z.object({
   email: z.string().email('Email tidak valid'),
@@ -25,19 +24,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function StudentLoginPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!authLoading && user) {
-      // Redirect based on role
-      if (user.role === 'admin') {
-        router.replace('/admin');
-      } else {
-        router.replace('/dashboard');
-      }
-    }
-  }, [user, authLoading, router]);
 
   const {
     register,
@@ -71,18 +58,16 @@ export default function StudentLoginPage() {
           throw new Error('Profile tidak ditemukan');
         }
 
-        // Don't force update role, use existing role from database
         await supabase.auth.refreshSession();
 
         toast.success('Login berhasil! Selamat datang.');
         
-        setTimeout(() => {
-          if (profile.role === 'admin') {
-            window.location.href = '/admin';
-          } else {
-            window.location.href = '/dashboard';
-          }
-        }, 500);
+        // DIRECT REDIRECT - NO DELAY, NO window.location.href
+        if (profile.role === 'admin') {
+          router.push('/admin');
+        } else {
+          router.push('/dashboard');
+        }
       }
     } catch (error: any) {
       console.error('Login error:', error);
