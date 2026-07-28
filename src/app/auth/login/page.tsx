@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ParticlesBackground } from '@/components/ui/ParticlesBackground';
 import { useAuthStore } from '@/store';
 
 const loginSchema = z.object({
@@ -29,10 +28,14 @@ export default function StudentLoginPage() {
   const { user, loading: authLoading } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Redirect if already logged in
   useEffect(() => {
     if (!authLoading && user) {
-      router.replace('/dashboard');
+      // Redirect based on role
+      if (user.role === 'admin') {
+        router.replace('/admin');
+      } else {
+        router.replace('/dashboard');
+      }
     }
   }, [user, authLoading, router]);
 
@@ -57,19 +60,28 @@ export default function StudentLoginPage() {
       if (error) throw error;
 
       if (authData.user) {
-        // Force set role ke student
-        await supabase
+        // Fetch profile to check role
+        const { data: profile } = await supabase
           .from('profiles')
-          .update({ role: 'student' })
-          .eq('user_id', authData.user.id);
+          .select('*')
+          .eq('user_id', authData.user.id)
+          .single();
 
+        if (!profile) {
+          throw new Error('Profile tidak ditemukan');
+        }
+
+        // Don't force update role, use existing role from database
         await supabase.auth.refreshSession();
 
         toast.success('Login berhasil! Selamat datang.');
         
-        // Use window.location.href to force reload and avoid cache issues
         setTimeout(() => {
-          window.location.href = '/dashboard';
+          if (profile.role === 'admin') {
+            window.location.href = '/admin';
+          } else {
+            window.location.href = '/dashboard';
+          }
         }, 500);
       }
     } catch (error: any) {
@@ -81,8 +93,6 @@ export default function StudentLoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 relative">
-      <ParticlesBackground />
-      
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[128px]" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[128px]" />
