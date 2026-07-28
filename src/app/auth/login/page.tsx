@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
+import { ParticlesBackground } from '@/components/ui/ParticlesBackground';
 
 const loginSchema = z.object({
   email: z.string().email('Email tidak valid'),
@@ -39,27 +40,37 @@ export default function StudentLoginPage() {
     try {
       const supabase = createClient();
       
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
 
       if (error) throw error;
 
-      toast.success('Login berhasil! Mengalihkan...');
-      
-      // SIMPLE: Just redirect immediately
-      // Dashboard will handle auth check with retry
-      router.push('/dashboard');
+      if (authData.user) {
+        // Force set role ke student
+        await supabase
+          .from('profiles')
+          .update({ role: 'student' })
+          .eq('user_id', authData.user.id);
+
+        await supabase.auth.refreshSession();
+
+        toast.success('Login berhasil! Selamat datang.');
+        window.location.href = '/dashboard';
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       toast.error(error.message || 'Login gagal. Periksa email dan password.');
+    } finally {
       setIsLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6 relative">
+      <ParticlesBackground />
+      
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[128px]" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[128px]" />
