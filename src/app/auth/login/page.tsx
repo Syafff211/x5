@@ -39,36 +39,18 @@ export default function StudentLoginPage() {
     try {
       const supabase = createClient();
       
-      const { data: authData, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
 
       if (error) throw error;
 
-      if (authData.user) {
-        // Fetch profile to check role
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', authData.user.id)
-          .single();
-
-        if (!profile) {
-          throw new Error('Profile tidak ditemukan');
-        }
-
-        await supabase.auth.refreshSession();
-
-        toast.success('Login berhasil! Selamat datang.');
-        
-        // DIRECT REDIRECT - NO DELAY, NO window.location.href
-        if (profile.role === 'admin') {
-          router.push('/admin');
-        } else {
-          router.push('/dashboard');
-        }
-      }
+      toast.success('Login berhasil! Mengalihkan...');
+      
+      // SIMPLE: Just redirect immediately
+      // Dashboard will handle auth check with retry
+      router.push('/dashboard');
     } catch (error: any) {
       console.error('Login error:', error);
       toast.error(error.message || 'Login gagal. Periksa email dan password.');
