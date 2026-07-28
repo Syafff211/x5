@@ -1,105 +1,118 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Wifi, WifiOff } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { usePresence } from '@/hooks/usePresence';
+import { createClient } from '@/lib/supabase/client';
+import { useAuthStore } from '@/store';
 
-interface PresenceIndicatorProps {
-  page?: string;
-  showCount?: boolean;
-  maxDisplay?: number;
+const supabase = createClient();
+
+interface TypingIndicatorProps {
+  channelName: string;
+  className?: string;
 }
 
-export function PresenceIndicator({ 
-  page, 
-  showCount = true, 
-  maxDisplay = 5 
-}: PresenceIndicatorProps) {
-  const { onlineUsers, isLoading, getOnlineCount, getUsersOnPage } = usePresence(page);
+export function TypingIndicator({ channelName, className = '' }: TypingIndicatorProps) {
+  const { user } = useAuthStore();
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  let typingTimeout: NodeJS.Timeout;
 
-  const usersToShow = page ? getUsersOnPage(page) : onlineUsers;
-  const displayUsers = usersToShow.slice(0, maxDisplay);
-  const remainingCount = usersToShow.length - maxDisplay;
-  const onlineCount = getOnlineCount();
+  useEffect(() => {
+    if (!user) return;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2">
-        <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-      </div>
-    );
-  }
+    const channel = supabase.channel(`typing:${channelName}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (payload.user_id !== user.id) {
+          setTypingUsers(prev => {
+            if (payload.is_typing) {
+              return [...new Set([...prev, payload.full_name])];
+            } else {
+              return prev.filter(name => name !== payload.full_name);
+            }
+          });
+        }
+      })
+      .subscribe();
 
-  if (onlineCount === 0) {
-    return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 cursor-default" title="Tidak ada user yang online">
-        <WifiOff className="h-4 w-4 text-muted-foreground" />
-        {showCount && (
-          <span className="text-xs text-muted-foreground">Offline</span>
-        )}
-      </div>
-    );
-  }
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [channelName, user]);
 
-  return (
-    <div className="flex items-center gap-2">
-      {/* Avatar Stack */}
-      <div className="flex -space-x-2">
-        <AnimatePresence>
-          {displayUsers.map((user, index) => (
-            <motion.div
-              key={user.id}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ delay: index * 0.05 }}
-              className="relative group"
-              title={`${user.full_name} - ${user.status}${user.current_page ? ` (di ${user.current_page})` : ''}`}
-            >
-              <Avatar className="h-8 w-8 border-2 border-background">
-                <AvatarImage src={user.avatar_url} alt={user.full_name} />
-                <AvatarFallback className="text-xs">
-                  {user.full_name.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              {/* Online Status Dot */}
-              <div
-                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-background ${
-                  user.status === 'online'
-                    ? 'bg-green-500'
-                    : user.status === 'away'
-                    ? 'bg-yellow-500'
-                    : 'bg-gray-500'
-                }`}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+  const handleTyping = async () => {
+    if (!user) return;
 
-        {/* Remaining Count Badge */}
-        {remainingCount > 0 && (
+    if (!isTyping) {
+      setIsTyping(true);
+      await supabase.channel(`typing:${channelName}`).send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          user_id: user.id,
+          full_name: user.full_name,
+          is_typing: true,
+        },
+      });
+    }
+
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(async () => {
+      setIsTyping(false);
+      await supabase.channel(`typing:${channelName}`).send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          user_id: user.id,
+          full_name: user.full_name,
+          is_typing: false,
+        },
+      });
+    }, 2000);
+  };
+
+  return {
+    typingUsers,
+    handleTyping,
+    TypingDisplay: () => (
+      <AnimatePresence>
+        {typingUsers.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative"
-            title={`Dan ${remainingCount} user lainnya`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className={`text-xs text-muted-foreground ${className}`}
           >
-            <div className="h-8 w-8 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-              <span className="text-xs font-semibold">+{remainingCount}</span>
-            </div>
+            <span className="italic">
+              {typingUsers.length === 1
+                ? `${typingUsers[0]} sedang mengetik`
+                : typingUsers.length === 2
+                ? `${typingUsers[0]} dan ${typingUsers[1]} sedang mengetik`
+                : `${typingUsers[0]} dan ${typingUsers.length - 1} lainnya sedang mengetik`}
+            </span>
+            <span className="inline-flex ml-1">
+              <motion.span
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+              >
+                .
+              </motion.span>
+              <motion.span
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+              >
+                .
+              </motion.span>
+              <motion.span
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+              >
+                .
+              </motion.span>
+            </span>
           </motion.div>
         )}
-      </div>
-
-      {/* Online Count Badge */}
-      {showCount && (
-        <Badge variant="secondary" className="gap-1">
-          <Wifi className="h-3 w-3" />
-          <span>{onlineCount} online</span>
-        </Badge>
-      )}
-    </div>
-  );
+      </AnimatePresence>
+    ),
+  };
 }
