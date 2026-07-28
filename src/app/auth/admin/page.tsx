@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -14,7 +14,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { useAuthStore } from '@/store';
 
 const loginSchema = z.object({
   email: z.string().email('Email tidak valid'),
@@ -25,15 +24,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
-
-  // Redirect if already logged in as admin
-  useEffect(() => {
-    if (!authLoading && user && user.role === 'admin') {
-      router.replace('/admin');
-    }
-  }, [user, authLoading, router]);
 
   const {
     register,
@@ -75,14 +66,13 @@ export default function AdminLoginPage() {
 
         toast.success('Login Admin berhasil!');
         
-        // Use window.location.href with delay to avoid cache issues
-        setTimeout(() => {
-          window.location.href = '/admin';
-        }, 500);
+        // Langsung redirect ke admin panel tanpa cek role
+        window.location.href = '/admin';
       }
     } catch (error: any) {
       console.error('Admin login error:', error);
       toast.error(error.message || 'Login gagal. Periksa email dan password.');
+    } finally {
       setIsLoading(false);
     }
   };
