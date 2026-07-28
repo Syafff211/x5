@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StudentSidebar } from '@/components/layout/StudentSidebar';
-import { useAuthStore } from '@/store';
+import { createClient } from '@/lib/supabase/client';
+
+const supabase = createClient();
 
 export default function DashboardLayout({
   children,
@@ -11,23 +13,50 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { user, loading } = useAuthStore();
-  const [isChecking, setIsChecking] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (!loading) {
-      setIsChecking(false);
-      
-      if (!user) {
-        router.replace('/auth/login');
-      } else if (user.role === 'admin') {
-        // Kalau admin login ke dashboard, redirect ke admin panel
-        router.replace('/admin');
-      }
-    }
-  }, [user, loading, router]);
+    const checkAuth = async () => {
+      try {
+        // Wait a bit for session to be ready
+        await new Promise(resolve => setTimeout(resolve, 500));
 
-  if (loading || isChecking) {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session?.user) {
+          // Retry once after 1 second
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          
+          if (!retrySession?.user) {
+            router.replace('/auth/login');
+            return;
+          }
+        }
+
+        // Check role
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', session?.user.id)
+          .single();
+
+        if (profile?.role === 'admin') {
+          router.replace('/admin');
+          return;
+        }
+
+        setIsReady(true);
+      } catch (error) {
+        console.error('Auth check error:', error);
+        router.replace('/auth/login');
+      }
+    };
+
+    checkAuth();
+  }, [router]);
+
+  if (!isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -36,10 +65,6 @@ export default function DashboardLayout({
         </div>
       </div>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (
